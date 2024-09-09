@@ -7,12 +7,11 @@
 
 void reverse_lines(FILE *input_file, FILE *output_file) {
     char *lines[MAX_LINES];
-    size_t line_size = MAX_LINE_LENGTH;
-    ssize_t read;
+    char buffer[MAX_LINE_LENGTH];
     int line_count = 0;
 
-    // Leer las líneas del archivo de entrada y almacenarlas en un buffer dinámico
-    while ((read = getline(&lines[line_count], &line_size, input_file)) != -1) {
+    // Leer las líneas del archivo de entrada
+    while (fgets(buffer, sizeof(buffer), input_file)) {
         // Verificar si el archivo excede el máximo permitido de líneas
         if (line_count >= MAX_LINES) {
             fprintf(stderr, "Error: Se excedió el número máximo de líneas.\n");
@@ -20,17 +19,19 @@ void reverse_lines(FILE *input_file, FILE *output_file) {
         }
 
         // Eliminar el salto de línea al final de cada línea
-        if (lines[line_count][read - 1] == '\n') {
-            lines[line_count][read - 1] = '\0';
+        size_t len = strlen(buffer);
+        if (len > 0 && buffer[len - 1] == '\n') {
+            buffer[len - 1] = '\0';
         }
-        line_count++;
 
-        // Asignar memoria para la línea
-        lines[line_count] = malloc(MAX_LINE_LENGTH);
+        // Asignar memoria para la línea y copiarla
+        lines[line_count] = malloc(len + 1);
         if (lines[line_count] == NULL) {
             fprintf(stderr, "malloc failed\n");
             exit(1);
         }
+        strcpy(lines[line_count], buffer);
+        line_count++;
     }
 
     // Escribir las líneas en orden inverso
@@ -41,29 +42,26 @@ void reverse_lines(FILE *input_file, FILE *output_file) {
 }
 
 int main(int argc, char *argv[]) {
-    FILE *input_file = NULL;
+    FILE *input_file = stdin;
     FILE *output_file = stdout; // Por defecto, la salida es la consola
 
     // Verificar el número de argumentos
-    if (argc > 3) {
-        fprintf(stderr, "usage: reverse <input> <output>\n");
+    if (argc != 1 && argc != 3) {
+        fprintf(stderr, "usage: reverse [input [output]]\n");
         exit(1);
     }
 
     // Abrir el archivo de entrada
-    if (argc > 1) {
-        if (argc == 3 && strcmp(argv[1], argv[2]) == 0) {
-            fprintf(stderr, "El archivo de entrada y salida deben diferir\n");
-            exit(1);
-        }
-
+    if (argc == 3 && strcmp(argv[1], argv[2]) == 0) {
+        fprintf(stderr, "El archivo de entrada y salida deben diferir\n");
+        exit(1);
+    }
+    if (argc >= 2) {
         input_file = fopen(argv[1], "r");
         if (input_file == NULL) {
             fprintf(stderr, "error: cannot open file '%s'\n", argv[1]);
             exit(1);
         }
-    } else {
-        input_file = stdin; // Leer desde la entrada estándar si no se proporciona archivo
     }
 
     // Abrir el archivo de salida
@@ -85,7 +83,6 @@ int main(int argc, char *argv[]) {
     if (input_file != stdin) {
         fclose(input_file);
     }
-
     if (output_file != stdout) {
         fclose(output_file);
     }
