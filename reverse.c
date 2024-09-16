@@ -1,91 +1,154 @@
+/*INTEGRANTES:
+    - Oswald Gutiérrez
+    - Santiago Rivera
+*/ 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
-#define MAX_LINE_LENGTH 1024
-#define MAX_LINES 1000
+#define RAISE_ERROR(message)          \
+    do {                             \
+        fprintf(stderr, "%s\n", message); \
+        exit(1);                      \
+    } while (0)
 
-void reverse_lines(FILE *input_file, FILE *output_file) {
-    char *lines[MAX_LINES];
-    char buffer[MAX_LINE_LENGTH];
-    int line_count = 0;
+#define capacidadInicial 2
 
-    // Leer las líneas del archivo de entrada
-    while (fgets(buffer, sizeof(buffer), input_file)) {
-        // Verificar si el archivo excede el máximo permitido de líneas
-        if (line_count >= MAX_LINES) {
-            fprintf(stderr, "Error: Se excedió el número máximo de líneas.\n");
-            exit(1);
-        }
+void verificarNombreArchivos(const char *archivoEntrada, const char *archivoSalidad);
+void abrirArchivos(const char *archivoEntrada, const char *archivoSalidad, FILE **archivoEntradaPtr, FILE **archivoSalidaPtr);
+void leerLineas(FILE *archivoEntrada, char ***lineas, size_t *cantidadLineas, size_t *capacidadLineas);
+void escribirLineasReversa(FILE *archivoSalidad, char **lineas, size_t cantidadLineas);
+void limpiar(char **lineas, size_t cantidadLineas, FILE *archivoEntrada, FILE *archivoSalidad);
 
-        // Eliminar el salto de línea al final de cada línea
-        size_t len = strlen(buffer);
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
-        }
+int main(int argc, char *argv[])
+{
+    FILE *archivoEntrada;
+    FILE *archivoSalidad;
+    char **lineas = NULL;
+    size_t cantidadLineas = 0;
+    size_t capacidadLineas = capacidadInicial;
 
-        // Asignar memoria para la línea y copiarla
-        lines[line_count] = malloc(len + 1);
-        if (lines[line_count] == NULL) {
-            fprintf(stderr, "malloc failed\n");
-            exit(1);
-        }
-        strcpy(lines[line_count], buffer);
-        line_count++;
+    if (argc < 2 || argc > 3)
+    {
+        RAISE_ERROR("usage: reverse <input> <output>");
     }
 
-    // Escribir las líneas en orden inverso
-    for (int i = line_count - 1; i >= 0; i--) {
-        fprintf(output_file, "%s\n", lines[i]);
-        free(lines[i]); // Liberar memoria
+    const char *archivoEntradaNombre = argv[1];
+    const char *archivoSalidaNombre = (argc > 2) ? argv[2] : NULL;
+
+    verificarNombreArchivos(archivoEntradaNombre, archivoSalidaNombre);
+    abrirArchivos(archivoEntradaNombre, archivoSalidaNombre, &archivoEntrada, &archivoSalidad);
+
+    lineas = (char **)malloc(capacidadLineas * sizeof(char *));
+    if (lineas == NULL)
+    {
+        RAISE_ERROR("reverse: malloc failed");
+    }
+
+    leerLineas(archivoEntrada, &lineas, &cantidadLineas, &capacidadLineas);
+    escribirLineasReversa(archivoSalidad, lineas, cantidadLineas);
+    limpiar(lineas, cantidadLineas, archivoEntrada, archivoSalidad);
+
+    return 0;
+}
+
+// Verifica que los archivos de entrada y salida sean diferentes
+void verificarNombreArchivos(const char *archivoEntrada, const char *archivoSalidad)
+{
+    if (archivoSalidad != NULL && strcmp(archivoEntrada, archivoSalidad) == 0)
+    {
+        RAISE_ERROR("reverse: input and output file must differ");
+    }
+
+    if (archivoSalidad != NULL)
+    {
+        struct stat stat_entrada, stat_salida;
+        if (stat(archivoEntrada, &stat_entrada) == 0 && stat(archivoSalidad, &stat_salida) == 0)
+        {
+            if (stat_entrada.st_ino == stat_salida.st_ino)
+            {
+                RAISE_ERROR("reverse: input and output file must differ");
+            }
+        }
     }
 }
 
-int main(int argc, char *argv[]) {
-    FILE *input_file = stdin;
-    FILE *output_file = stdout; // Por defecto, la salida es la consola
-
-    // Verificar el número de argumentos
-    if (argc != 1 && argc != 3) {
-        fprintf(stderr, "usage: reverse [input [output]]\n");
-        exit(1);
-    }
-
-    // Abrir el archivo de entrada
-    if (argc == 3 && strcmp(argv[1], argv[2]) == 0) {
-        fprintf(stderr, "El archivo de entrada y salida deben diferir\n");
-        exit(1);
-    }
-    if (argc >= 2) {
-        input_file = fopen(argv[1], "r");
-        if (input_file == NULL) {
-            fprintf(stderr, "error: cannot open file '%s'\n", argv[1]);
+// Abre los archivos de entrada y salida
+void abrirArchivos(const char *archivoEntrada, const char *archivoSalidad, FILE **archivoEntradaPtr, FILE **archivoSalidaPtr)
+{
+    if (archivoEntrada != NULL)
+    {
+        *archivoEntradaPtr = fopen(archivoEntrada, "r");
+        if (*archivoEntradaPtr == NULL)
+        {
+            fprintf(stderr, "reverse: cannot open file '%s'\n", archivoEntrada);
             exit(1);
         }
     }
+    else
+    {
+        *archivoEntradaPtr = stdin;
+    }
 
-    // Abrir el archivo de salida
-    if (argc == 3) {
-        output_file = fopen(argv[2], "w");
-        if (output_file == NULL) {
-            fprintf(stderr, "error: cannot open file '%s'\n", argv[2]);
-            if (input_file != stdin) {
-                fclose(input_file);
+    if (archivoSalidad != NULL)
+    {
+        *archivoSalidaPtr = fopen(archivoSalidad, "w");
+        if (*archivoSalidaPtr == NULL)
+        {
+            fprintf(stderr, "reverse: cannot open file '%s'\n", archivoSalidad);
+            exit(1);
+        }
+    }
+    else
+    {
+        *archivoSalidaPtr = stdout;
+    }
+}
+
+// Lee las líneas del archivo de entrada
+void leerLineas(FILE *archivoEntrada, char ***lineas, size_t *cantidadLineas, size_t *capacidadLineas)
+{
+    size_t len = 0;
+    while (getline(&(*lineas)[*cantidadLineas], &len, archivoEntrada) != -1)
+    {
+        (*cantidadLineas)++;
+
+        if (*cantidadLineas == *capacidadLineas)
+        {
+            *capacidadLineas *= 2;
+            *lineas = (char **)realloc(*lineas, *capacidadLineas * sizeof(char *));
+            if (*lineas == NULL)
+            {
+                RAISE_ERROR("reverse: realloc failed");
             }
-            exit(1);
         }
+        (*lineas)[*cantidadLineas] = NULL;
+        len = 0;
     }
+}
 
-    // Leer, invertir y escribir las líneas
-    reverse_lines(input_file, output_file);
-
-    // Cerrar archivos
-    if (input_file != stdin) {
-        fclose(input_file);
+// Escribe las líneas en orden inverso en el archivo de salida
+void escribirLineasReversa(FILE *archivoSalidad, char **lineas, size_t cantidadLineas)
+{
+    for (int i = cantidadLineas - 1; i >= 0; i--)
+    {
+        fprintf(archivoSalidad, "%s", lineas[i]);
     }
-    if (output_file != stdout) {
-        fclose(output_file);
-    }
+}
 
-    return 0;
+// Libera la memoria y cierra los archivos
+void limpiar(char **lineas, size_t cantidadLineas, FILE *archivoEntrada, FILE *archivoSalidad)
+{
+    for (size_t i = 0; i < cantidadLineas; i++)
+    {
+        free(lineas[i]);
+    }
+    free(lineas);
+
+    if (archivoEntrada != stdin)
+        fclose(archivoEntrada);
+    if (archivoSalidad != stdout)
+        fclose(archivoSalidad);
 }
